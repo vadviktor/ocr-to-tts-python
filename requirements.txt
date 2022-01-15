@@ -1,3 +1,4 @@
 boto3==1.20.15
 black
 isort
+flake8

@@ -1,4 +1,7 @@
+import argparse
+from json.tool import main
 import os
+from sys import argv
 from time import sleep
 from typing import Optional
 
@@ -25,7 +28,7 @@ def upload_pages(client, local_path, bucket, prefix):
     with os.scandir(local_path) as page_files:
         page_file: os.DirEntry
         for page_file in page_files:
-            if not page_file.is_file():
+            if not page_file.is_file() or page_file.name == ".gitignore":
                 continue
 
             print(f"uploading {page_file.name}")
@@ -85,37 +88,53 @@ def synthesize_text(client, bucket, prefix, text):
     )
 
 
-AWS_PROFILE = "ikon"
-AWS_BUCKET = "vadviktor-tmp"
-AWS_PREFIX_KEY = "geography_cp7"
-PAGES_DIR = "./pages"
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("profile")
+    parser.add_argument("bucket")
+    parser.add_argument("prefix")
 
-session = boto3.Session(profile_name=AWS_PROFILE)
-s3 = session.resource("s3")
-s3_bucket = s3.Bucket(AWS_BUCKET)
+    if len(argv) != 4:
+        parser.print_help()
+        exit(1)
 
-print("deleting old images")
-delete_existing(s3_bucket, AWS_PREFIX_KEY)
+    return parser.parse_args()
 
-print("uploading new images")
-upload_pages(
-    client=session.client("s3"),
-    local_path=PAGES_DIR,
-    bucket=s3_bucket,
-    prefix=AWS_PREFIX_KEY,
-)
 
-print("extracting text")
-extracted_text = extract_text(
-    client=session.client("textract"), bucket=s3_bucket, prefix=AWS_PREFIX_KEY
-)
+if __name__ == "__main__":
+    args = parse_args()
 
-print("creating audio file")
-synthesize_text(
-    client=session.client("polly"),
-    bucket=s3_bucket,
-    prefix=AWS_PREFIX_KEY,
-    text=extracted_text,
-)
+    AWS_PROFILE = args.profile
+    AWS_BUCKET = args.bucket
+    AWS_PREFIX_KEY = args.prefix
+    PAGES_DIR = "./pages"
 
-print("finished")
+    session = boto3.Session(profile_name=AWS_PROFILE)
+    s3 = session.resource("s3")
+    s3_bucket = s3.Bucket(AWS_BUCKET)
+
+    print("deleting old images")
+    delete_existing(s3_bucket, AWS_PREFIX_KEY)
+
+    print("uploading new images")
+    upload_pages(
+        client=session.client("s3"),
+        local_path=PAGES_DIR,
+        bucket=s3_bucket,
+        prefix=AWS_PREFIX_KEY,
+    )
+
+    print("extracting text")
+    extracted_text = extract_text(
+        client=session.client("textract"), bucket=s3_bucket, prefix=AWS_PREFIX_KEY
+    )
+
+    print("creating audio file")
+    synthesize_text(
+        client=session.client("polly"),
+        bucket=s3_bucket,
+        prefix=AWS_PREFIX_KEY,
+        text=extracted_text,
+    )
+
+    print("finished")
