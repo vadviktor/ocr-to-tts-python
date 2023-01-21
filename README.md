@@ -11,5 +11,5 @@
 
 1. make sure to have an AWS profile setup with access to `s3`, `textract` and `polly`
 2. add images in the `pages` folder, named in alphabetical order to be read
-3. run the script: `python main.py AWS-PROFILE AWS-BUCKET PREFIX
+3. run the script: `python main.py AWS-PROFILE AWS-BUCKET PREFIX DIRECTORY`
 4. check the generated audio file in the target bucket

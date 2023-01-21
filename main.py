@@ -1,5 +1,4 @@
 import argparse
-from json.tool import main
 import os
 from sys import argv
 from time import sleep
@@ -39,15 +38,18 @@ def upload_pages(client, local_path, bucket, prefix):
             s3_waiter.wait(Bucket=bucket.name, Key=key)
 
 
-def extract_text(client, bucket, prefix) -> Optional[str]:
+def extract_text(session, bucket, prefix) -> Optional[str]:
+    s3_client = session.client("s3")
+    textract_client = session.client("textract")
     pages_to_read = list_existing(bucket, prefix)
 
     if len(pages_to_read) == 0:
         return
 
-    lines = []
+    all_lines = []
     for key in pages_to_read:
-        response = client.detect_document_text(
+        lines = []
+        response = textract_client.detect_document_text(
             Document={"S3Object": {"Bucket": bucket.name, "Name": key}}
         )
 
@@ -55,7 +57,22 @@ def extract_text(client, bucket, prefix) -> Optional[str]:
             if item["BlockType"] == "LINE":
                 lines.append(item["Text"])
 
-    return " ".join(lines)
+        store_text_in_s3(
+            client=s3_client,
+            bucket=s3_bucket,
+            key=f"{key}.txt",
+            text=" ".join(lines),
+        )
+        all_lines.extend(lines)
+
+    return " ".join(all_lines)
+
+
+def store_text_in_s3(client, bucket, key, text: str):
+    print(f"storing {key} in s3")
+    bucket.put_object(Key=key, Body=text.encode("utf-8"))
+    s3_waiter = client.get_waiter("object_exists")
+    s3_waiter.wait(Bucket=bucket.name, Key=key)
 
 
 def synthesize_text(client, bucket, prefix, text):
@@ -93,8 +110,11 @@ def parse_args():
     parser.add_argument("profile")
     parser.add_argument("bucket")
     parser.add_argument("prefix")
+    parser.add_argument("directory")
 
-    if len(argv) != 4:
+    print(parser)
+
+    if len(argv) != 5:
         parser.print_help()
         exit(1)
 
@@ -107,7 +127,7 @@ if __name__ == "__main__":
     AWS_PROFILE = args.profile
     AWS_BUCKET = args.bucket
     AWS_PREFIX_KEY = args.prefix
-    PAGES_DIR = "./pages"
+    PAGES_DIR = args.directory
 
     session = boto3.Session(profile_name=AWS_PROFILE)
     s3 = session.resource("s3")
@@ -126,7 +146,7 @@ if __name__ == "__main__":
 
     print("extracting text")
     extracted_text = extract_text(
-        client=session.client("textract"), bucket=s3_bucket, prefix=AWS_PREFIX_KEY
+        session=session, bucket=s3_bucket, prefix=AWS_PREFIX_KEY
     )
 
     print("creating audio file")
